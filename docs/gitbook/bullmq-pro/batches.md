@@ -6,6 +6,10 @@ description: Processing jobs in batches
 
 It is possible to configure workers so that instead of processing one job at a time they can process up to a number of jobs (a so-called _batch_) in one go. Workers using batches have slightly different semantics and behavior than normal workers, so read carefully the following examples to avoid pitfalls.
 
+Use batches when the processor can handle several waiting jobs together, for example when it is cheaper to call an external service once for many jobs than once per job. Batches are a worker-side processing feature: jobs are still added to the queue as individual jobs, but the worker receives a batch wrapper and can inspect the jobs in that batch.
+
+If you need to add several jobs atomically, use [Adding jobs in bulk](../guide/queues/adding-bulks.md) instead. `Queue.addBulk` controls how jobs enter the queue; batches control how a worker fetches and processes jobs after they are waiting.
+
 To enable batches, pass the `batch` option with a `size` property representing the maximum number of jobs per batch:
 
 ```typescript
@@ -32,7 +36,7 @@ There is no strict maximum limit for the size of batches; however, keep in mind 
 In addition to the size option, two new options—`minSize` and `timeout`—provide greater control over batch processing:
 
 - `minSize`: Specifies the minimum number of jobs required before the worker processes a batch. The worker will wait until at least minSize jobs are available before fetching and processing them, up to the size limit. If fewer than minSize jobs are available, the worker waits indefinitely unless a timeout is also set.&#x20;
-- `timeout`: Defines the maximum time (in milliseconds) the worker will wait for minSize jobs to accumulate. If the timeout expires before minSize is reached, the worker processes whatever jobs are available, up to the size limit. If minSize is not set the timeout option is effectively ignored, as the worker batches only avaialble jobs.
+- `timeout`: Defines the maximum time (in milliseconds) the worker will wait for minSize jobs to accumulate. If the timeout expires before minSize is reached, the worker processes whatever jobs are available, up to the size limit. If minSize is not set the timeout option is effectively ignored, as the worker batches only available jobs.
 
 {% hint style="info" %}
 Important: Without `groupAffinity`, `minSize` and `timeout` are not compatible with groups. When groups are used without `groupAffinity`, the worker ignores `minSize` and batches only the currently available jobs without waiting.
@@ -146,9 +150,9 @@ const worker = new WorkerPro(
 );
 ```
 
-Only jobs explicitly marked with `setAsFailed` will fail; the remaining jobs in the batch will complete succesfully once the processor finishes.
+Only jobs explicitly marked with `setAsFailed` will fail; the remaining jobs in the batch will complete successfully once the processor finishes.
 
-### Handling events
+### Handling events and real-time updates
 
 Batches are managed by wrapping all jobs in a batch into a dummy job that holds the jobs in an internal array. This simplifies batch processing but affects event handling. For example, worker-level event listeners (e.g., `worker.on('completed', ...)`) report events for the dummy batch job, not the individual jobs within it.
 
@@ -171,6 +175,8 @@ queueEvents.on('completed', (jobId, err) => {
   // ...
 });
 ```
+
+For real-time progress or UI updates, prefer queue-level events when consumers need to react to individual jobs. Use the batch wrapper events when the consumer only needs to know that the batch processor finished. If the UI needs both views, listen to the batch worker event for processor-level status and to `QueueEventsPro` for individual job completion or failure.
 
 ### Limitations
 
